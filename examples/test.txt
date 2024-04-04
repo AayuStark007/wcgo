@@ -1,0 +1,5 @@
+Like all good software engineering we’re zero indexed! In this step you’re going to set your environment up ready to begin developing and testing your solution.
+
+I’ll leave you to setup your IDE / editor of choice and programming language of choice. After that here’s what I’d like you to do to be ready to test your solution.
+
+Download the this text and save it as test.txt.
