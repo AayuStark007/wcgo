@@ -19,5 +19,6 @@ func Execute() error {
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolVarP(&internal.Bytes, "bytes", "c", false, "print the byte count")
+	rootCmd.PersistentFlags().BoolVarP(&internal.Bytes, "bytes", "c", false, "print the byte counts")
+	rootCmd.PersistentFlags().BoolVarP(&internal.Lines, "lines", "l", false, "print the newline counts")
 }

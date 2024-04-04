@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -8,7 +9,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var Bytes bool
+var (
+	Bytes bool
+	Lines bool
+	Words bool
+)
 
 func Handle(cmd *cobra.Command, args []string) {
 	// check if valid filename passed
@@ -23,12 +28,30 @@ func Handle(cmd *cobra.Command, args []string) {
 		fmt.Printf("error opening file %s\n", err.Error())
 		return
 	}
+	defer fd.Close()
 
 	if Bytes {
 		if offset, err := fd.Seek(0, io.SeekEnd); err != nil {
 			panic(err.Error())
 		} else {
 			fmt.Printf("%d %s\n", offset, fileName)
+		}
+	}
+
+	if Lines {
+		numlines := 0
+		reader := bufio.NewReader(fd)
+
+		for {
+			if _, err := reader.ReadBytes('\n'); err == io.EOF {
+				fmt.Printf("%d %s\n", numlines, fileName)
+				return
+			} else if err != nil {
+				fmt.Printf("error reading file %s\n", err.Error())
+				return
+			} else {
+				numlines++
+			}
 		}
 	}
 }
