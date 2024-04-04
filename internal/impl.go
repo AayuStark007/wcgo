@@ -54,4 +54,45 @@ func Handle(cmd *cobra.Command, args []string) {
 			}
 		}
 	}
+
+	if Words {
+		numwords := 0
+		reader := bufio.NewReader(fd)
+		word := false
+		buf := []byte{}
+
+		for {
+			if byt, err := reader.ReadByte(); err == io.EOF {
+				if word {
+					numwords++
+				}
+				fmt.Printf("%d %s\n", numwords, fileName)
+				return
+			} else if err != nil {
+				fmt.Printf("error reading file %s\n", err.Error())
+				return
+			} else {
+				if isSpecial(byt) && word {
+					numwords++
+					word = false
+					// fmt.Println(string(buf))
+					buf = buf[:0]
+				} else if !isSpecial(byt) && !word {
+					word = true
+				}
+
+				if word {
+					buf = append(buf, byt)
+				}
+			}
+		}
+	}
+}
+
+func isSpecial(char byte) bool {
+	if char == ' ' || char == '\t' || char == '\n' || char == '\r' {
+		return true
+	} else {
+		return false
+	}
 }
