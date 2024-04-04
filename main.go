@@ -1,7 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"github.com/aayustark007/wcgo/cmd"
+)
 
 func main() {
-	fmt.Println("yoyoyo")
+	cmd.Execute()
 }
