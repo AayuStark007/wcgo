@@ -2,7 +2,7 @@ package internal
 
 import (
 	"bufio"
-	"errors"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -12,11 +12,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const CHUNK_SIZE = 16 * 1024
+
 var (
 	Bytes bool
 	Lines bool
 	Words bool
 	Chars bool
+	Debug bool
 )
 
 type WCContext struct {
@@ -27,6 +30,7 @@ type WCContext struct {
 	flagWords bool
 	flagChars bool
 	flagNone  bool
+	flagStdin bool
 
 	files []string
 	index uint16
@@ -48,17 +52,27 @@ type wcresult struct {
 // TODO: move to bitfield based flags
 
 func New(files []string, bytes, lines, words, chars bool) (*WCContext, error) {
+	var flagStdin bool = false
 	if len(files) <= 0 {
-		return nil, errors.New("no file name provided")
+		flagStdin = true
 	}
 
-	fd, err := os.Open(files[0])
+	var fd *os.File
+	var err error
+
+	if flagStdin {
+		fd = os.Stdin
+	} else {
+		fd, err = os.Open(files[0])
+	}
+
 	return &WCContext{
 		flagBytes: bytes,
 		flagLines: lines,
 		flagWords: words,
 		flagChars: chars,
 		flagNone:  !bytes && !lines && !words && !chars,
+		flagStdin: flagStdin,
 
 		files: files,
 		index: 0,
@@ -81,116 +95,65 @@ func (ctx *WCContext) currentFd() *os.File {
 	return ctx.fd
 }
 
-// byteCount gets the number of bytes in the currently open file
-func (ctx *WCContext) byteCount() (int64, error) {
-	return ctx.currentFd().Seek(0, io.SeekEnd)
+func (ctx *WCContext) Compute() {
+	ctx.result.Lock()
+	defer ctx.result.Unlock()
+	ctx.computeInternal()
 }
 
-// lineCount gets the number of lines in the currently open file
-func (ctx *WCContext) lineCount() (int32, error) {
-	var numlines int32 = 0
-	fd := ctx.currentFd()
+func (ctx *WCContext) computeInternal() {
+	// since stdin is not seekable, we need to compute all the counts at once
 
-	_, err := fd.Seek(0, io.SeekStart)
-	if err != nil {
-		return -1, err
-	}
+	// use bufio to read 16384 bytes at a time
+	// bytes => count num of bytes read and add
+	// lines => count each \n byte and add
+	// words => our routine can be used
+	// chars => read byte slice as rune and count
 
-	reader := bufio.NewReader(fd)
+	reader := bufio.NewReaderSize(ctx.currentFd(), CHUNK_SIZE)
+	buff := make([]byte, CHUNK_SIZE)
+	var countBytes int64 = 0
+	var countLines int32 = 0
+	var countWords int32 = 0
+	var countChars int64 = 0
 
-	for {
-		if _, err := reader.ReadBytes('\n'); err == io.EOF {
-			return numlines, nil
-		} else if err != nil {
-			return -1, errors.New("error while reading file contents")
-		} else {
-			numlines++
-		}
-	}
-}
-
-// wordCount gets the number of words in the currently open file
-func (ctx *WCContext) wordCount() (int32, error) {
-	var numwords int32 = 0
-
-	fd := ctx.currentFd()
-
-	_, err := fd.Seek(0, io.SeekStart)
-	if err != nil {
-		return -1, err
-	}
-
-	reader := bufio.NewReader(fd)
 	word := false
 
 	for {
-		if byt, err := reader.ReadByte(); err == io.EOF {
+		clear(buff)
+		numBytes, err := reader.Read(buff)
+		if err == io.EOF || numBytes == 0 {
 			if word {
-				numwords++
+				countWords++
 			}
-			return numwords, nil
-		} else if err != nil {
-			return -1, errors.New("error while reading file contents")
-		} else {
-			if isSpecial(byt) && word {
-				numwords++
-				word = false
-			} else if !isSpecial(byt) && !word {
-				word = true
-			}
+			ctx.result.bytes = countBytes
+			ctx.result.lines = countLines
+			ctx.result.words = countWords
+			ctx.result.chars = countChars
+
+			return
 		}
+
+		countBytes += int64(numBytes)
+
+		reader := bytes.NewReader(buff[:numBytes])
+		countLines += lineCount(reader)
+
+		// special handling in case we end buffer in middle of a word
+		reader.Seek(0, io.SeekStart)
+		count, wrd := wordCount(reader, word)
+		word = wrd
+		countWords += count
+
+		reader.Seek(0, io.SeekStart)
+		countChars += charCount(reader)
 	}
-}
-
-func (ctx *WCContext) charCount() (int64, error) {
-	var numchars int32 = 0
-
-	fd := ctx.currentFd()
-
-	_, err := fd.Seek(0, io.SeekStart)
-	if err != nil {
-		return -1, err
-	}
-
-	reader := bufio.NewReader(fd)
-
-	for {
-		if r, _, err := reader.ReadRune(); err == io.EOF {
-			return int64(numchars), nil
-		} else if err != nil || r == unicode.ReplacementChar {
-			return -1, errors.New("error while reading file contents")
-		} else {
-			numchars++
-		}
-	}
-}
-
-func (ctx *WCContext) Compute() {
-	var err error
-
-	ctx.result.Lock()
-	defer ctx.result.Unlock()
-
-	if ctx.flagBytes || ctx.flagNone {
-		ctx.result.bytes, err = ctx.byteCount()
-	}
-
-	if ctx.flagLines || ctx.flagNone {
-		ctx.result.lines, err = ctx.lineCount()
-	}
-
-	if ctx.flagWords || ctx.flagNone {
-		ctx.result.words, err = ctx.wordCount()
-	}
-
-	if ctx.flagChars {
-		ctx.result.chars, err = ctx.charCount()
-	}
-
-	ctx.result.err = err
 }
 
 func (ctx *WCContext) currentFile() string {
+	if ctx.flagStdin {
+		return ""
+	}
 	return ctx.files[ctx.index]
 }
 
@@ -238,12 +201,6 @@ func (ctx *WCContext) Close() error {
 }
 
 func Handle(cmd *cobra.Command, args []string) {
-	// check if valid filename passed
-	if len(args) != 1 {
-		fmt.Println("invalid files passed")
-		return
-	}
-
 	ctx, err := New(args, Bytes, Lines, Words, Chars)
 	if err != nil {
 		panic(err)
@@ -262,5 +219,52 @@ func isSpecial(char byte) bool {
 		return true
 	} else {
 		return false
+	}
+}
+
+// lineCount gets the number of lines in the currently open file
+func lineCount(reader io.ByteReader) int32 {
+	var count int32 = 0
+
+	for {
+		if byt, err := reader.ReadByte(); err == io.EOF {
+			return count
+		} else if err != nil {
+			return 0
+		} else if byt == '\n' {
+			count++
+		}
+	}
+}
+
+// wordCount gets the number of words in the currently open file
+func wordCount(reader io.ByteReader, word bool) (int32, bool) {
+	var count int32 = 0
+
+	for {
+		if byt, err := reader.ReadByte(); err == io.EOF {
+			return count, word
+		} else {
+			if isSpecial(byt) && word {
+				count++
+				word = false
+			} else if !isSpecial(byt) && !word {
+				word = true
+			}
+		}
+	}
+}
+
+func charCount(reader io.RuneReader) int64 {
+	var count int64 = 0
+
+	for {
+		if r, _, err := reader.ReadRune(); err == io.EOF {
+			return count
+		} else if err != nil || r == unicode.ReplacementChar {
+			return 0
+		} else {
+			count++
+		}
 	}
 }

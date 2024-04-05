@@ -23,4 +23,5 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&internal.Lines, "lines", "l", false, "print the newline counts")
 	rootCmd.PersistentFlags().BoolVarP(&internal.Words, "words", "w", false, "print the word counts")
 	rootCmd.PersistentFlags().BoolVarP(&internal.Chars, "chars", "m", false, "print the character counts")
+	rootCmd.PersistentFlags().BoolVarP(&internal.Debug, "debug", "d", false, "debug mode")
 }
