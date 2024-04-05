@@ -26,6 +26,7 @@ func TestWCContext_String(t *testing.T) {
 		flagBytes bool
 		flagLines bool
 		flagWords bool
+		flagChars bool
 		files     []string
 	}
 	tests := []struct {
@@ -36,35 +37,42 @@ func TestWCContext_String(t *testing.T) {
 		{
 			"text_bytes",
 			fields{
-				true, false, false, []string{path("examples/test.txt")},
+				true, false, false, false, []string{path("examples/test.txt")},
 			},
 			fmt.Sprintf("%d %s\n", 342190, path("examples/test.txt")),
 		},
 		{
 			"text_lines",
 			fields{
-				false, true, false, []string{path("examples/test.txt")},
+				false, true, false, false, []string{path("examples/test.txt")},
 			},
 			fmt.Sprintf("%d %s\n", 7145, path("examples/test.txt")),
 		},
 		{
 			"text_words",
 			fields{
-				false, false, true, []string{path("examples/test.txt")},
+				false, false, true, false, []string{path("examples/test.txt")},
 			},
 			fmt.Sprintf("%d %s\n", 58164, path("examples/test.txt")),
 		},
 		{
+			"text_chars",
+			fields{
+				false, false, false, true, []string{path("examples/test.txt")},
+			},
+			fmt.Sprintf("%d %s\n", 339292, path("examples/test.txt")),
+		},
+		{
 			"text_all",
 			fields{
-				false, false, false, []string{path("examples/test.txt")},
+				false, false, false, false, []string{path("examples/test.txt")},
 			},
 			fmt.Sprintf("%d %d %d %s\n", 7145, 58164, 342190, path("examples/test.txt")),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx, err := New(tt.fields.files, tt.fields.flagBytes, tt.fields.flagLines, tt.fields.flagWords)
+			ctx, err := New(tt.fields.files, tt.fields.flagBytes, tt.fields.flagLines, tt.fields.flagWords, tt.fields.flagChars)
 			if err != nil {
 				t.Errorf("New() error = %v, wantErr false", err)
 				return

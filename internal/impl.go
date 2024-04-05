@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"unicode"
 
 	"github.com/spf13/cobra"
 )
@@ -15,6 +16,7 @@ var (
 	Bytes bool
 	Lines bool
 	Words bool
+	Chars bool
 )
 
 type WCContext struct {
@@ -23,6 +25,7 @@ type WCContext struct {
 	flagBytes bool
 	flagLines bool
 	flagWords bool
+	flagChars bool
 	flagNone  bool
 
 	files []string
@@ -38,10 +41,13 @@ type wcresult struct {
 	words int32
 	lines int32
 	bytes int64
+	chars int64
 	err   error
 }
 
-func New(files []string, bytes, lines, words bool) (*WCContext, error) {
+// TODO: move to bitfield based flags
+
+func New(files []string, bytes, lines, words, chars bool) (*WCContext, error) {
 	if len(files) <= 0 {
 		return nil, errors.New("no file name provided")
 	}
@@ -51,7 +57,8 @@ func New(files []string, bytes, lines, words bool) (*WCContext, error) {
 		flagBytes: bytes,
 		flagLines: lines,
 		flagWords: words,
-		flagNone:  !bytes && !lines && !words,
+		flagChars: chars,
+		flagNone:  !bytes && !lines && !words && !chars,
 
 		files: files,
 		index: 0,
@@ -61,6 +68,7 @@ func New(files []string, bytes, lines, words bool) (*WCContext, error) {
 			words: 0,
 			lines: 0,
 			bytes: 0,
+			chars: 0,
 			err:   nil,
 		},
 	}, err
@@ -134,6 +142,29 @@ func (ctx *WCContext) wordCount() (int32, error) {
 	}
 }
 
+func (ctx *WCContext) charCount() (int64, error) {
+	var numchars int32 = 0
+
+	fd := ctx.currentFd()
+
+	_, err := fd.Seek(0, io.SeekStart)
+	if err != nil {
+		return -1, err
+	}
+
+	reader := bufio.NewReader(fd)
+
+	for {
+		if r, _, err := reader.ReadRune(); err == io.EOF {
+			return int64(numchars), nil
+		} else if err != nil || r == unicode.ReplacementChar {
+			return -1, errors.New("error while reading file contents")
+		} else {
+			numchars++
+		}
+	}
+}
+
 func (ctx *WCContext) Compute() {
 	var err error
 
@@ -150,6 +181,10 @@ func (ctx *WCContext) Compute() {
 
 	if ctx.flagWords || ctx.flagNone {
 		ctx.result.words, err = ctx.wordCount()
+	}
+
+	if ctx.flagChars {
+		ctx.result.chars, err = ctx.charCount()
 	}
 
 	ctx.result.err = err
@@ -185,6 +220,10 @@ func (ctx *WCContext) String() string {
 		return fmt.Sprintf("%d %d %d %s\n", ctx.result.lines, ctx.result.words, ctx.result.bytes, ctx.currentFile())
 	}
 
+	if ctx.flagChars {
+		return fmt.Sprintf("%d %s\n", ctx.result.chars, ctx.currentFile())
+	}
+
 	return ""
 }
 
@@ -205,7 +244,7 @@ func Handle(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	ctx, err := New(args, Bytes, Lines, Words)
+	ctx, err := New(args, Bytes, Lines, Words, Chars)
 	if err != nil {
 		panic(err)
 	}
