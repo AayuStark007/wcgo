@@ -8,7 +8,7 @@ import (
 var (
 	rootCmd = &cobra.Command{
 		Use:   "wcgo [file]...",
-		Short: "A go implementation of wc to print the newline, char, bytes count for input file(s)",
+		Short: "A Go implementation of wc to print newline, word, and byte counts for each file",
 		Args:  cobra.MinimumNArgs(0),
 		Run:   internal.Handle,
 	}
