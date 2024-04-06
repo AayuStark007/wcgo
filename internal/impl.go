@@ -151,8 +151,10 @@ func (ctx *WCContext) computeInternal() {
 		word = wrd
 		countWords += count
 
-		reader.Seek(0, io.SeekStart)
-		countChars += charCount(reader)
+		if ctx.flagChars {
+			reader.Seek(0, io.SeekStart)
+			countChars += charCount(reader)
+		}
 	}
 }
 
