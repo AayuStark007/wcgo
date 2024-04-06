@@ -1,3 +1,6 @@
+//go:build linux
+// +build linux
+
 package internal
 
 import (
@@ -8,6 +11,8 @@ import (
 	"os"
 	"sync"
 	"unicode"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/spf13/cobra"
 )
@@ -109,8 +114,9 @@ func (ctx *WCContext) computeInternal() {
 	// lines => count each \n byte and add
 	// words => our routine can be used
 	// chars => read byte slice as rune and count
-
-	reader := bufio.NewReaderSize(ctx.currentFd(), CHUNK_SIZE)
+	fd := ctx.currentFd()
+	unix.Fadvise(int(fd.Fd()), 0, 0, unix.FADV_SEQUENTIAL)
+	reader := bufio.NewReaderSize(fd, CHUNK_SIZE)
 	buff := make([]byte, CHUNK_SIZE)
 	var countBytes int64 = 0
 	var countLines int32 = 0
@@ -120,7 +126,7 @@ func (ctx *WCContext) computeInternal() {
 	word := false
 
 	for {
-		clear(buff)
+		// clear(buff)
 		numBytes, err := reader.Read(buff)
 		if err == io.EOF || numBytes == 0 {
 			if word {
