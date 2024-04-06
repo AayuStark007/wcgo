@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sync"
+	"strings"
 	"unicode"
 
 	"golang.org/x/sys/unix"
@@ -28,8 +28,6 @@ var (
 )
 
 type WCContext struct {
-	sync.RWMutex
-
 	flagBytes bool
 	flagLines bool
 	flagWords bool
@@ -37,16 +35,11 @@ type WCContext struct {
 	flagNone  bool
 	flagStdin bool
 
-	files []string
-	index uint16
-	fd    *os.File // current open fd
-	done  bool     // whether current fd is closed or EOF
-
-	result wcresult
+	files   []string
+	results []wcresult
 }
 
 type wcresult struct {
-	sync.RWMutex
 	words int32
 	lines int32
 	bytes int64
@@ -60,15 +53,7 @@ func New(files []string, bytes, lines, words, chars bool) (*WCContext, error) {
 	var flagStdin bool = false
 	if len(files) <= 0 {
 		flagStdin = true
-	}
-
-	var fd *os.File
-	var err error
-
-	if flagStdin {
-		fd = os.Stdin
-	} else {
-		fd, err = os.Open(files[0])
+		files = []string{"-"}
 	}
 
 	return &WCContext{
@@ -79,43 +64,33 @@ func New(files []string, bytes, lines, words, chars bool) (*WCContext, error) {
 		flagNone:  !bytes && !lines && !words && !chars,
 		flagStdin: flagStdin,
 
-		files: files,
-		index: 0,
-		fd:    fd,
-		done:  false,
-		result: wcresult{
-			words: 0,
-			lines: 0,
-			bytes: 0,
-			chars: 0,
-			err:   nil,
-		},
-	}, err
-}
-
-func (ctx *WCContext) currentFd() *os.File {
-	ctx.RLock()
-	defer ctx.RUnlock()
-
-	return ctx.fd
+		files:   files,
+		results: make([]wcresult, len(files)),
+	}, nil
 }
 
 func (ctx *WCContext) Compute() {
-	ctx.result.Lock()
-	defer ctx.result.Unlock()
-	ctx.computeInternal()
+	if ctx.flagStdin {
+		ctx.computeInternal(os.Stdin, 0)
+		return
+	}
+
+	for idx, file := range ctx.files {
+		if fd, err := os.Open(file); err != nil {
+			ctx.results[idx].err = err
+		} else {
+			ctx.computeInternal(fd, idx)
+		}
+	}
 }
 
-func (ctx *WCContext) computeInternal() {
-	// since stdin is not seekable, we need to compute all the counts at once
+func (ctx *WCContext) computeInternal(fd *os.File, index int) {
+	defer fd.Close()
 
-	// use bufio to read 16384 bytes at a time
-	// bytes => count num of bytes read and add
-	// lines => count each \n byte and add
-	// words => our routine can be used
-	// chars => read byte slice as rune and count
-	fd := ctx.currentFd()
-	unix.Fadvise(int(fd.Fd()), 0, 0, unix.FADV_SEQUENTIAL)
+	if !ctx.flagStdin {
+		unix.Fadvise(int(fd.Fd()), 0, 0, unix.FADV_SEQUENTIAL)
+	}
+
 	reader := bufio.NewReaderSize(fd, CHUNK_SIZE)
 	buff := make([]byte, CHUNK_SIZE)
 	var countBytes int64 = 0
@@ -131,10 +106,10 @@ func (ctx *WCContext) computeInternal() {
 			if word {
 				countWords++
 			}
-			ctx.result.bytes = countBytes
-			ctx.result.lines = countLines
-			ctx.result.words = countWords
-			ctx.result.chars = countChars
+			ctx.results[index].bytes = countBytes
+			ctx.results[index].lines = countLines
+			ctx.results[index].words = countWords
+			ctx.results[index].chars = countChars
 
 			return
 		}
@@ -152,54 +127,72 @@ func (ctx *WCContext) computeInternal() {
 	}
 }
 
-func (ctx *WCContext) currentFile() string {
-	if ctx.flagStdin {
-		return ""
-	}
-	return ctx.files[ctx.index]
-}
-
 func (ctx *WCContext) String() string {
-	if ctx.result.err != nil {
-		return ctx.result.err.Error()
+	var result strings.Builder
+
+	var sumBytes int64 = 0
+	var sumLines int32 = 0
+	var sumWords int32 = 0
+	var sumChars int64 = 0
+
+	// generate for each file
+	for idx, file := range ctx.files {
+		res := ctx.results[idx]
+
+		if res.err != nil {
+			result.WriteString(fmt.Sprintf("%s: %s\n", file, res.err.Error()))
+			continue
+		}
+
+		if ctx.flagChars {
+			sumChars += res.chars
+			result.WriteString(fmt.Sprintf("  %d", res.chars))
+		}
+
+		if ctx.flagLines || ctx.flagNone {
+			sumLines += res.lines
+			result.WriteString(fmt.Sprintf("  %d", res.lines))
+		}
+
+		if ctx.flagWords || ctx.flagNone {
+			sumWords += res.words
+			result.WriteString(fmt.Sprintf("  %d", res.words))
+		}
+
+		if ctx.flagBytes || ctx.flagNone {
+			sumBytes += res.bytes
+			result.WriteString(fmt.Sprintf("  %d", res.bytes))
+		}
+
+		fileName := file
+		if file == "-" {
+			fileName = ""
+		}
+
+		result.WriteString(fmt.Sprintf(" %s\n", fileName))
 	}
 
-	// TODO: print for all files, along with total
-	// TODO: not the correct approach, cannot handle flag combinations (use string buffer)
-	ctx.result.RLock()
-	defer ctx.result.RUnlock()
+	if len(ctx.files) > 1 {
+		if ctx.flagBytes || ctx.flagNone {
+			result.WriteString(fmt.Sprintf("  %d", sumBytes))
+		}
 
-	if ctx.flagBytes {
-		return fmt.Sprintf("%d %s\n", ctx.result.bytes, ctx.currentFile())
+		if ctx.flagLines || ctx.flagNone {
+			result.WriteString(fmt.Sprintf("  %d", sumLines))
+		}
+
+		if ctx.flagWords || ctx.flagNone {
+			result.WriteString(fmt.Sprintf("  %d", sumWords))
+		}
+
+		if ctx.flagChars {
+			result.WriteString(fmt.Sprintf("  %d", sumChars))
+		}
+
+		result.WriteString(fmt.Sprintf(" %s\n", "total"))
 	}
 
-	if ctx.flagLines {
-		return fmt.Sprintf("%d %s\n", ctx.result.lines, ctx.currentFile())
-	}
-
-	if ctx.flagWords {
-		return fmt.Sprintf("%d %s\n", ctx.result.words, ctx.currentFile())
-	}
-
-	if ctx.flagNone {
-		return fmt.Sprintf("%d %d %d %s\n", ctx.result.lines, ctx.result.words, ctx.result.bytes, ctx.currentFile())
-	}
-
-	if ctx.flagChars {
-		return fmt.Sprintf("%d %s\n", ctx.result.chars, ctx.currentFile())
-	}
-
-	return ""
-}
-
-func (ctx *WCContext) Close() error {
-	ctx.Lock()
-	defer ctx.Unlock()
-
-	ctx.fd.Close()
-	ctx.done = true
-
-	return nil
+	return result.String()
 }
 
 func Handle(cmd *cobra.Command, args []string) {
@@ -207,7 +200,6 @@ func Handle(cmd *cobra.Command, args []string) {
 	if err != nil {
 		panic(err)
 	}
-	defer ctx.Close()
 
 	ctx.Compute()
 

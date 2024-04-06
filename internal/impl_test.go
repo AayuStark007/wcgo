@@ -39,35 +39,35 @@ func TestWCContext_String(t *testing.T) {
 			fields{
 				true, false, false, false, []string{path("examples/test.txt")},
 			},
-			fmt.Sprintf("%d %s\n", 342190, path("examples/test.txt")),
+			fmt.Sprintf("  %d %s\n", 342190, path("examples/test.txt")),
 		},
 		{
 			"text_lines",
 			fields{
 				false, true, false, false, []string{path("examples/test.txt")},
 			},
-			fmt.Sprintf("%d %s\n", 7145, path("examples/test.txt")),
+			fmt.Sprintf("  %d %s\n", 7145, path("examples/test.txt")),
 		},
 		{
 			"text_words",
 			fields{
 				false, false, true, false, []string{path("examples/test.txt")},
 			},
-			fmt.Sprintf("%d %s\n", 58164, path("examples/test.txt")),
+			fmt.Sprintf("  %d %s\n", 58164, path("examples/test.txt")),
 		},
 		{
 			"text_chars",
 			fields{
 				false, false, false, true, []string{path("examples/test.txt")},
 			},
-			fmt.Sprintf("%d %s\n", 339292, path("examples/test.txt")),
+			fmt.Sprintf("  %d %s\n", 339292, path("examples/test.txt")),
 		},
 		{
 			"text_all",
 			fields{
 				false, false, false, false, []string{path("examples/test.txt")},
 			},
-			fmt.Sprintf("%d %d %d %s\n", 7145, 58164, 342190, path("examples/test.txt")),
+			fmt.Sprintf("  %d  %d  %d %s\n", 7145, 58164, 342190, path("examples/test.txt")),
 		},
 	}
 	for _, tt := range tests {
