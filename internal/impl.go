@@ -126,7 +126,6 @@ func (ctx *WCContext) computeInternal() {
 	word := false
 
 	for {
-		// clear(buff)
 		numBytes, err := reader.Read(buff)
 		if err == io.EOF || numBytes == 0 {
 			if word {
@@ -141,19 +140,14 @@ func (ctx *WCContext) computeInternal() {
 		}
 
 		countBytes += int64(numBytes)
-
-		reader := bytes.NewReader(buff[:numBytes])
-		countLines += lineCount(reader)
-
+		countLines += lineCount(buff, numBytes)
 		// special handling in case we end buffer in middle of a word
-		reader.Seek(0, io.SeekStart)
-		count, wrd := wordCount(reader, word)
+		count, wrd := wordCount(buff, numBytes, word)
 		word = wrd
 		countWords += count
 
 		if ctx.flagChars {
-			reader.Seek(0, io.SeekStart)
-			countChars += charCount(reader)
+			countChars += charCount(bytes.NewReader(buff[:numBytes]))
 		}
 	}
 }
@@ -231,36 +225,33 @@ func isSpecial(char byte) bool {
 }
 
 // lineCount gets the number of lines in the currently open file
-func lineCount(reader io.ByteReader) int32 {
+func lineCount(data []byte, size int) int32 {
 	var count int32 = 0
 
-	for {
-		if byt, err := reader.ReadByte(); err == io.EOF {
-			return count
-		} else if err != nil {
-			return 0
-		} else if byt == '\n' {
+	for i := 0; i < size; i++ {
+		if data[i] == '\n' {
 			count++
 		}
 	}
+
+	return count
 }
 
 // wordCount gets the number of words in the currently open file
-func wordCount(reader io.ByteReader, word bool) (int32, bool) {
+func wordCount(data []byte, size int, word bool) (int32, bool) {
 	var count int32 = 0
 
-	for {
-		if byt, err := reader.ReadByte(); err == io.EOF {
-			return count, word
-		} else {
-			if isSpecial(byt) && word {
-				count++
-				word = false
-			} else if !isSpecial(byt) && !word {
-				word = true
-			}
+	for i := 0; i < size; i++ {
+		spl := isSpecial(data[i])
+		if spl && word {
+			count++
+			word = false
+		} else if !spl && !word {
+			word = true
 		}
 	}
+
+	return count, word
 }
 
 func charCount(reader io.RuneReader) int64 {
