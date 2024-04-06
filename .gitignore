@@ -1,3 +1,11 @@
 wc
 wcgo
 test2.txt
+FlameGraph/
+*.perf-folded
+*.perf
+*.profile-folded
+*.data
+*.old
+*.prof
+bigfile.txt
