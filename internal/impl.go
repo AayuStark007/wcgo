@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"unicode"
 
 	"golang.org/x/sys/unix"
@@ -75,12 +76,19 @@ func (ctx *WCContext) Compute() {
 		return
 	}
 
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
 	for idx, file := range ctx.files {
-		if fd, err := os.Open(file); err != nil {
-			ctx.results[idx].err = err
-		} else {
-			ctx.computeInternal(fd, idx)
-		}
+		wg.Add(1)
+		go func(i int, f string) {
+			defer wg.Done()
+			if fd, err := os.Open(f); err != nil {
+				ctx.results[i].err = err
+			} else {
+				ctx.computeInternal(fd, i)
+			}
+		}(idx, file)
 	}
 }
 
