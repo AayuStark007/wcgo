@@ -7,6 +7,8 @@
 - **Line Count:** Count the number of lines in a text file.
 - **Word Count:** Count the number of words in a text file.
 - **Character Count:** Count the number of characters in a text file.
+- **Multiple Files:** Supports processing multiple text files.
+- **Standard In:** Supports Standard In (> and pipe works)
 - **Concurrency[WiP]:** Utilize Go's concurrency model for handling multiple files efficiently.
 
 ## Getting Started
@@ -87,9 +89,7 @@ cat example.txt | ./wcgo
 
 Since, this project is in development, some features of classic `wc` are yet to be implemented:
 
-- Support for multiple files
 - Support for passing `-` as file to enable reading from stdin
-- Support for passing multiple flags together. (currently one flag at a time works, so command like: wcgo -lm will not work)
 - Support for fixed with printing (currently output is space separated)
 
 Since, we are implementing this in Go, this allows scope for utilizing some language features for more performance:

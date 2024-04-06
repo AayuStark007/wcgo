@@ -173,8 +173,8 @@ func (ctx *WCContext) String() string {
 	}
 
 	if len(ctx.files) > 1 {
-		if ctx.flagBytes || ctx.flagNone {
-			result.WriteString(fmt.Sprintf("  %d", sumBytes))
+		if ctx.flagChars {
+			result.WriteString(fmt.Sprintf("  %d", sumChars))
 		}
 
 		if ctx.flagLines || ctx.flagNone {
@@ -185,8 +185,8 @@ func (ctx *WCContext) String() string {
 			result.WriteString(fmt.Sprintf("  %d", sumWords))
 		}
 
-		if ctx.flagChars {
-			result.WriteString(fmt.Sprintf("  %d", sumChars))
+		if ctx.flagBytes || ctx.flagNone {
+			result.WriteString(fmt.Sprintf("  %d", sumBytes))
 		}
 
 		result.WriteString(fmt.Sprintf(" %s\n", "total"))
