@@ -67,7 +67,7 @@ func TestWCContext_String(t *testing.T) {
 			fields{
 				false, false, false, false, []string{path("examples/test.txt")},
 			},
-			fmt.Sprintf("  %d  %d  %d %s\n", 7145, 58164, 342190, path("examples/test.txt")),
+			fmt.Sprintf("  %d   %d   %d %s\n", 7145, 58164, 342190, path("examples/test.txt")),
 		},
 	}
 	for _, tt := range tests {
