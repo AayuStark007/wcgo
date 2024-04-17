@@ -85,6 +85,12 @@ Count words, lines and bytes via Standard Input
 cat example.txt | ./wcgo
 ```
 
+Process multiple files
+
+```bash
+./wcgo file1.txt file2.txt file3.txt
+```
+
 ### Limitations
 
 Since, this project is in development, some features of classic `wc` are yet to be implemented:
@@ -94,7 +100,7 @@ Since, this project is in development, some features of classic `wc` are yet to 
 
 Since, we are implementing this in Go, this allows scope for utilizing some language features for more performance:
 
-- [wip] Using Goroutines for processing multiple files concurrently.
+- Using Goroutines for processing multiple files concurrently.
 - Using buffered io to handle large files without using up too much memory
 
 ### License
@@ -107,6 +113,6 @@ Since, we are implementing this in Go, this allows scope for utilizing some lang
 
 #### TODO
 - benchmarks
-- fixes
+- fixes for word counting in binary files
 - performance tuning
-- concurrency
+- efficient concurrency (vs goroutine per file)
