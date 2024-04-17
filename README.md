@@ -1,6 +1,6 @@
 # wcgo
 
-`wcgo` is a Go implementation of the classic `wc` (word count) command-line tool, providing a fast and efficient way to count words, lines, and characters in text files. Inspired by the UNIX `wc` utility, `wcgo` aims to offer similar functionality with the added benefits of Go's performance and concurrency features.
+`wcgo` is a Go implementation of the classic `wc` (word count) command-line tool, providing a fast and efficient way to count words, lines, and characters in text files. The aim is to offer functionality similar to `wc` while utilizing Go's language features and concurrency model to get some extra performance.
 
 ## Features
 
