@@ -9,3 +9,5 @@ FlameGraph/
 *.old
 *.prof
 bigfile.txt
+bigfile2.txt
+*.c

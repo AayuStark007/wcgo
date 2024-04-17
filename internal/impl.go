@@ -8,7 +8,9 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode"
@@ -41,8 +43,8 @@ type WCContext struct {
 }
 
 type wcresult struct {
-	words int32
-	lines int32
+	words int64
+	lines int64
 	bytes int64
 	chars int64
 	err   error
@@ -102,8 +104,8 @@ func (ctx *WCContext) computeInternal(fd *os.File, index int) {
 	reader := bufio.NewReaderSize(fd, CHUNK_SIZE)
 	buff := make([]byte, CHUNK_SIZE)
 	var countBytes int64 = 0
-	var countLines int32 = 0
-	var countWords int32 = 0
+	var countLines int64 = 0
+	var countWords int64 = 0
 	var countChars int64 = 0
 
 	word := false
@@ -139,9 +141,36 @@ func (ctx *WCContext) String() string {
 	var result strings.Builder
 
 	var sumBytes int64 = 0
-	var sumLines int32 = 0
-	var sumWords int32 = 0
+	var sumLines int64 = 0
+	var sumWords int64 = 0
 	var sumChars int64 = 0
+
+	var maxWBytes int = 0
+	var maxWLines int = 0
+	var maxWWords int = 0
+	var maxWChars int = 0
+
+	for idx := range ctx.files {
+		res := ctx.results[idx]
+
+		if res.err != nil {
+			continue
+		}
+		sumChars += res.chars
+		sumLines += res.lines
+		sumWords += res.words
+		sumBytes += res.bytes
+
+		maxWBytes = maxInt(maxWBytes, intWidth(res.bytes))
+		maxWLines = maxInt(maxWLines, intWidth(res.lines))
+		maxWWords = maxInt(maxWWords, intWidth(res.words))
+		maxWChars = maxInt(maxWChars, intWidth(res.chars))
+	}
+
+	maxWBytes = maxInt(maxWBytes, intWidth(sumChars)) + 2
+	maxWLines = maxInt(maxWLines, intWidth(sumLines)) + 2
+	maxWWords = maxInt(maxWWords, intWidth(sumWords)) + 2
+	maxWChars = maxInt(maxWChars, intWidth(sumBytes)) + 2
 
 	// generate for each file
 	for idx, file := range ctx.files {
@@ -153,23 +182,19 @@ func (ctx *WCContext) String() string {
 		}
 
 		if ctx.flagChars {
-			sumChars += res.chars
-			result.WriteString(fmt.Sprintf("  %d", res.chars))
+			result.WriteString(toPaddedStr(maxWChars, res.chars))
 		}
 
 		if ctx.flagLines || ctx.flagNone {
-			sumLines += res.lines
-			result.WriteString(fmt.Sprintf("  %d", res.lines))
+			result.WriteString(toPaddedStr(maxWLines, res.lines))
 		}
 
 		if ctx.flagWords || ctx.flagNone {
-			sumWords += res.words
-			result.WriteString(fmt.Sprintf("  %d", res.words))
+			result.WriteString(toPaddedStr(maxWWords, res.words))
 		}
 
 		if ctx.flagBytes || ctx.flagNone {
-			sumBytes += res.bytes
-			result.WriteString(fmt.Sprintf("  %d", res.bytes))
+			result.WriteString(toPaddedStr(maxWBytes, res.bytes))
 		}
 
 		fileName := file
@@ -177,27 +202,28 @@ func (ctx *WCContext) String() string {
 			fileName = ""
 		}
 
-		result.WriteString(fmt.Sprintf(" %s\n", fileName))
+		result.WriteString(fmt.Sprintf("%s\n", fileName))
 	}
 
+	// print the totals
 	if len(ctx.files) > 1 {
 		if ctx.flagChars {
-			result.WriteString(fmt.Sprintf("  %d", sumChars))
+			result.WriteString(toPaddedStr(maxWChars, sumChars))
 		}
 
 		if ctx.flagLines || ctx.flagNone {
-			result.WriteString(fmt.Sprintf("  %d", sumLines))
+			result.WriteString(toPaddedStr(maxWLines, sumLines))
 		}
 
 		if ctx.flagWords || ctx.flagNone {
-			result.WriteString(fmt.Sprintf("  %d", sumWords))
+			result.WriteString(toPaddedStr(maxWWords, sumWords))
 		}
 
 		if ctx.flagBytes || ctx.flagNone {
-			result.WriteString(fmt.Sprintf("  %d", sumBytes))
+			result.WriteString(toPaddedStr(maxWBytes, sumBytes))
 		}
 
-		result.WriteString(fmt.Sprintf(" %s\n", "total"))
+		result.WriteString(fmt.Sprintf("%s\n", "total"))
 	}
 
 	return result.String()
@@ -217,7 +243,7 @@ func Handle(cmd *cobra.Command, args []string) {
 // TODO: this is not an exhaustive check,
 // need to define what byte constitutes a valid candidate for word and change the logic
 func isSpecial(char byte) bool {
-	if char == ' ' || char == '\t' || char == '\n' || char == '\r' {
+	if char == ' ' || char == '\t' || char == '\n' || char == '\r' || char == '\f' || char == '\v' {
 		return true
 	} else {
 		return false
@@ -225,8 +251,8 @@ func isSpecial(char byte) bool {
 }
 
 // lineCount gets the number of lines in the currently open file
-func lineCount(data []byte, size int) int32 {
-	var count int32 = 0
+func lineCount(data []byte, size int) int64 {
+	var count int64 = 0
 
 	for i := 0; i < size; i++ {
 		if data[i] == '\n' {
@@ -238,8 +264,8 @@ func lineCount(data []byte, size int) int32 {
 }
 
 // wordCount gets the number of words in the currently open file
-func wordCount(data []byte, size int, word bool) (int32, bool) {
-	var count int32 = 0
+func wordCount(data []byte, size int, word bool) (int64, bool) {
+	var count int64 = 0
 
 	for i := 0; i < size; i++ {
 		spl := isSpecial(data[i])
@@ -266,4 +292,25 @@ func charCount(reader io.RuneReader) int64 {
 			count++
 		}
 	}
+}
+
+func intWidth(n int64) int {
+	if n == 0 {
+		return 1
+	}
+
+	if n < 0 {
+		n = n * -1
+	}
+
+	return int(math.Log10(float64(n))) + 1
+}
+
+func maxInt(x, y int) int {
+	return int(math.Max(float64(x), float64(y)))
+}
+
+func toPaddedStr(width int, value int64) string {
+	format := "%" + strconv.Itoa(width) + "s "
+	return fmt.Sprintf(format, strconv.FormatInt(value, 10))
 }
